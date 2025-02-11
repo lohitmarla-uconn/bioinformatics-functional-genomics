@@ -1,0 +1,126 @@
+---
+title: "DeSeq_2 Analysis"
+output: html_notebook
+---
+
+```{r}
+
+library(DESeq2) 
+library(ggplot2)
+
+countData <- read.csv('data/airway_scaledcounts.csv', header = TRUE, sep = ",") 
+head(countData)
+
+metaData <- read.csv('data/airway_metadata.csv', header = TRUE, sep = ",")
+
+head(metaData)
+
+
+```
+
+```{r}
+
+dds <- DESeqDataSetFromMatrix(countData = countData, colData = metaData, design = ~dex, tidy = TRUE)
+
+
+dds <- DESeq(dds)
+
+
+res <- results(dds) 
+head(results(dds, tidy = TRUE))
+
+
+summary(res)
+
+```
+
+
+```{r}
+# Sort the results by padj and extract the top 6 genes
+res <- res[order(res$padj), ]
+top_genes <- rownames(res)[1:6]
+
+# Load necessary libraries
+library(ggplot2)
+library(gridExtra)
+library(grid)
+
+# Initialize an empty list to store the plots
+plot_list <- list()
+
+# Loop through each gene and create a ggplot for normalized counts
+for (g in top_genes) {
+  # Retrieve the data for the current gene
+  data <- plotCounts(dds, gene = g, intgroup = "dex", returnData = TRUE)
+  
+  # Create the ggplot object with additional margin for spacing
+  p <- ggplot(data, aes(x = dex, y = count, color = dex)) +
+    geom_point(size = 3, position = position_jitter(width = 0.1)) +
+    scale_y_log10() +
+    labs(title = paste("Gene:", g),
+         x = "Treatment",
+         y = "Normalized count (log scale)") +
+    theme_minimal() +
+    theme(plot.title = element_text(face = "bold", hjust = 0.5),
+          axis.title = element_text(face = "bold"),
+          legend.position = "none",
+          plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), "cm"))  # Top, Right, Bottom, Left margins
+  
+  # Add the plot to the list
+  plot_list[[g]] <- p
+}
+
+# Arrange the plots in a 2 x 3 grid with extra space between them
+grid.arrange(grobs = plot_list, ncol = 3)
+
+```
+
+```{r}
+
+# Load necessary libraries
+library(ggplot2)
+
+# Convert the DESeq2 results to a data frame (if not already)
+df <- as.data.frame(res)
+
+# Create a new column for the -log10(pvalue)
+df$negLog10P <- -log10(df$pvalue)
+
+# Categorize significance:
+# "Not Significant" by default, "Significant" for padj < 0.01, and "Highly Significant" for padj < 0.01 and abs(log2FoldChange) > 2.
+df$Significance <- "Not Significant"
+df$Significance[df$padj < 0.01] <- "Significant"
+df$Significance[df$padj < 0.01 & abs(df$log2FoldChange) > 2] <- "Highly Significant"
+df$Significance <- factor(df$Significance, levels = c("Not Significant", "Significant", "Highly Significant"))
+
+# Define a more professional colour scheme:
+# Grey for non-significant, steelblue for significant, and firebrick for highly significant.
+sig_colors <- c("Not Significant" = "grey70", 
+                "Significant"     = "steelblue", 
+                "Highly Significant" = "firebrick")
+
+# Create the volcano plot with ggplot2 using a classic theme for a professional look
+p <- ggplot(df, aes(x = log2FoldChange, y = negLog10P, color = Significance)) +
+  geom_point(alpha = 0.8, size = 1.5) +
+  scale_color_manual(values = sig_colors) +
+  theme_classic() +
+  labs(title = "Volcano Plot",
+       x = "log2 Fold Change",
+       y = "-log10(p-value)") +
+  xlim(-3, 3) +
+  theme(plot.title = element_text(hjust = 0.5, face = "bold"),
+        axis.title = element_text(face = "bold"))
+
+# Display the plot
+print(p)
+
+
+```
+
+```{r}
+
+vsdata <- vst(dds, blind = FALSE) 
+plotPCA(vsdata, intgroup = "dex")
+
+```
+
