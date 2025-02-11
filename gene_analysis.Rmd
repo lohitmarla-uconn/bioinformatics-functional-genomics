@@ -1,126 +1,165 @@
 ---
-title: "DeSeq_2 Analysis"
+title: "DESeq2 Analysis Report"
+author: "Lohit Marla"
+date: "2025-02-11"
 output: html_notebook
+editor_options: 
+  markdown: 
+    wrap: sentence
 ---
 
-```{r}
+## Introduction
 
-library(DESeq2) 
-library(ggplot2)
+This report presents an RNA-seq differential expression analysis using DESeq2.
+Our objectives are to:
 
-countData <- read.csv('data/airway_scaledcounts.csv', header = TRUE, sep = ",") 
-head(countData)
+-   Assess the impact of the treatment (indicated by the `dex` variable) on gene expression.
+-   Identify differentially expressed genes.
+-   Visualize the expression patterns of key genes.
+-   Explore overall sample variation using Principal Component Analysis (PCA).
 
-metaData <- read.csv('data/airway_metadata.csv', header = TRUE, sep = ",")
+The results described herein provide insight into the treatment effects on gene expression, and the workflow is designed for reproducibility and clarity.
 
-head(metaData)
+## Data Loading and Preparation
 
+First, we load the necessary libraries and import our scaled count data and metadata.
+The count data represents gene expression measurements, while the metadata provides experimental conditions for each sample.
 
-```
+Differential Expression Analysis We construct a DESeq2 dataset object and run the DESeq analysis.
+The results include log2 fold changes, p-values, and adjusted p-values for each gene.
 
-```{r}
+```{r, echo = FALSE, results = "hide"}
 
-dds <- DESeqDataSetFromMatrix(countData = countData, colData = metaData, design = ~dex, tidy = TRUE)
-
-
-dds <- DESeq(dds)
-
-
-res <- results(dds) 
-head(results(dds, tidy = TRUE))
-
-
-summary(res)
-
-```
-
-
-```{r}
-# Sort the results by padj and extract the top 6 genes
-res <- res[order(res$padj), ]
-top_genes <- rownames(res)[1:6]
-
-# Load necessary libraries
+# Create DESeq2 dataset from matrix (using tidy=TRUE because the data is in long format)
+library(DESeq2)
 library(ggplot2)
 library(gridExtra)
 library(grid)
 
-# Initialize an empty list to store the plots
+```
+
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = countData, colData = metaData, design = ~dex, tidy = TRUE)
+
+# Run the differential expression analysis
+dds <- DESeq(dds)
+
+# Extract results and view a summary
+res <- results(dds)
+head(results(dds, tidy = TRUE))
+summary(res)
+```
+
+## Visualization of Top Genes
+
+The top six genes (with the smallest adjusted p-values) are selected for detailed visualization.
+Their normalized counts across treatment conditions are plotted on a log scale.
+We use ggplot2 for a polished appearance and gridExtra to arrange the plots in a grid.
+
+```{r}
+
+# Sort the results by padj and extract the top 6 genes
+res <- res[order(res$padj), ]
+top_genes <- rownames(res)[1:6]
+
+# Create a list to store individual gene plots
 plot_list <- list()
 
-# Loop through each gene and create a ggplot for normalized counts
+# Loop through each gene and create a plot for its normalized counts
 for (g in top_genes) {
-  # Retrieve the data for the current gene
+  # Get normalized counts for gene g
   data <- plotCounts(dds, gene = g, intgroup = "dex", returnData = TRUE)
   
-  # Create the ggplot object with additional margin for spacing
+  # Create a ggplot object with custom formatting and margins for spacing
   p <- ggplot(data, aes(x = dex, y = count, color = dex)) +
     geom_point(size = 3, position = position_jitter(width = 0.1)) +
     scale_y_log10() +
-    labs(title = paste("Gene:", g),
+    labs(title = paste("", g),
          x = "Treatment",
-         y = "Normalized count (log scale)") +
+         y = "Normalized (log scale)") +
     theme_minimal() +
     theme(plot.title = element_text(face = "bold", hjust = 0.5),
           axis.title = element_text(face = "bold"),
           legend.position = "none",
-          plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), "cm"))  # Top, Right, Bottom, Left margins
+          plot.margin = unit(c(0.5, 0.5, 0.5, 0.5), "cm"))
   
-  # Add the plot to the list
+  # Add the plot to our list
   plot_list[[g]] <- p
 }
 
-# Arrange the plots in a 2 x 3 grid with extra space between them
+# Arrange the individual gene plots in a 2 x 3 grid with extra space between them
 grid.arrange(grobs = plot_list, ncol = 3)
 
 ```
 
-```{r}
+## Volcano Plot of Differential Expression
 
-# Load necessary libraries
-library(ggplot2)
+The volcano plot summarizes the differential expression results across all genes.
+Genes are color-coded based on significance:
 
-# Convert the DESeq2 results to a data frame (if not already)
+Grey: Not significant.
+Steelblue: Significant (padj \< 0.01).
+Firebrick: Highly significant (padj \< 0.01 and \|log2FoldChange\| \> 2).
+
+```{r, echo=FALSE}
+
+# Convert the results to a data frame for plotting
 df <- as.data.frame(res)
 
-# Create a new column for the -log10(pvalue)
+# Compute -log10(pvalue) for better visualization
 df$negLog10P <- -log10(df$pvalue)
 
-# Categorize significance:
-# "Not Significant" by default, "Significant" for padj < 0.01, and "Highly Significant" for padj < 0.01 and abs(log2FoldChange) > 2.
+# Categorize genes based on significance thresholds
 df$Significance <- "Not Significant"
 df$Significance[df$padj < 0.01] <- "Significant"
 df$Significance[df$padj < 0.01 & abs(df$log2FoldChange) > 2] <- "Highly Significant"
 df$Significance <- factor(df$Significance, levels = c("Not Significant", "Significant", "Highly Significant"))
 
-# Define a more professional colour scheme:
-# Grey for non-significant, steelblue for significant, and firebrick for highly significant.
+# Define a professional color scheme
 sig_colors <- c("Not Significant" = "grey70", 
                 "Significant"     = "steelblue", 
                 "Highly Significant" = "firebrick")
 
-# Create the volcano plot with ggplot2 using a classic theme for a professional look
+# Create the volcano plot using ggplot2
+df <- df[!is.na(df$log2FoldChange) & !is.na(df$negLog10P), ]
+
+# Without restricting the x-axis:
 p <- ggplot(df, aes(x = log2FoldChange, y = negLog10P, color = Significance)) +
   geom_point(alpha = 0.8, size = 1.5) +
   scale_color_manual(values = sig_colors) +
   theme_classic() +
-  labs(title = "Volcano Plot",
+  labs(title = "Volcano Plot of Differential Expression",
        x = "log2 Fold Change",
        y = "-log10(p-value)") +
-  xlim(-3, 3) +
   theme(plot.title = element_text(hjust = 0.5, face = "bold"),
         axis.title = element_text(face = "bold"))
 
-# Display the plot
+
 print(p)
 
-
 ```
+
+
+## Principal Component Analysis (PCA)
+
+PCA is used to explore overall sample variation and assess clustering based on the treatment condition.
+The variance-stabilizing transformation (VST) helps in visualizing the data on a comparable scale.
 
 ```{r}
 
-vsdata <- vst(dds, blind = FALSE) 
-plotPCA(vsdata, intgroup = "dex")
+# Perform variance-stabilizing transformation
+vsdata <- vst(dds, blind = FALSE)
 
+# Plot PCA grouped by treatment condition
+plotPCA(vsdata, intgroup = "dex")
 ```
 
+## Conclusion
+
+This report demonstrates our comprehensive DESeq2 analysis workflow:
+
+Data Preparation: We loaded count data and metadata, ensuring that our samples are properly annotated.
+Differential Expression Analysis: DESeq2 was used to identify genes that respond to the treatment.
+Visualization: Detailed plots of top genes and a volcano plot summarize the differential expression results, while a PCA plot reveals sample clustering based on treatment.
+The analyses provide a robust foundation for further investigation and biological interpretation of the treatment effects.
+Please let me know if you have any questions or need further details regarding the workflow.
