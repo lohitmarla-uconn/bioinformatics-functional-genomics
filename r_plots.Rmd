@@ -1,0 +1,75 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+
+# load libraries
+library(tidyverse)
+library(ggplot2)
+
+```
+
+```{r}
+# Read CSV file correctly
+dat.long <- read.csv('data/long_format_geo.csv', header = TRUE, stringsAsFactors = FALSE)
+
+# Check structure to confirm proper column separation
+str(dat.long)
+head(dat.long)
+
+
+```
+
+```{r}
+# 1. barplot
+dat.long %>%
+  filter(gene == 'BRCA1') %>%
+  ggplot(aes(x = samples, y = FPKM, fill = tissue)) +
+  geom_col() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 4)  # Reduce font size
+  )
+
+```
+
+```{r}
+
+# 2. density
+dat.long %>%
+  filter(gene == 'BRCA1') %>%
+  ggplot(., aes(x = FPKM, fill = tissue)) +
+  geom_density(alpha = 0.3)
+
+```
+
+```{r}
+
+# 3. boxplot 
+dat.long %>%
+  filter(gene == 'BRCA1') %>%
+  ggplot(., aes(x = metastasis, y = FPKM)) +
+  #geom_boxplot()
+  geom_violin()
+
+```
+
+```{r}
+# 4. heatmap
+# Ensure FPKM is numeric
+dat.long$FPKM <- as.numeric(as.character(dat.long$FPKM))
+
+# Define genes of interest
+genes.of.interest <- c('BRCA1', 'BRCA2', 'TP53', 'ALK', 'MYCN')
+
+# Save heatmap as PDF
+pdf("heatmap_save2.pdf", width = 10, height = 8)
+
+ggplot(dat.long %>% filter(gene %in% genes.of.interest), 
+       aes(x = samples, y = gene, fill = FPKM)) +
+  geom_tile() +
+  scale_fill_gradient(low = 'white', high = 'red') +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) # Rotate sample names for readability
+
+dev.off()
